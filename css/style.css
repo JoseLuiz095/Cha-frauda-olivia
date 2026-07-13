@@ -39,6 +39,21 @@ h1 {
     transition: 0.3s;
 }
 
+/* sessão footer */
+footer {
+    padding: 15px 18px;
+    text-align: center;
+}
+
+.link {
+    color: rgb(254, 121, 31);
+    text-decoration: none;
+}
+
+footer span a:hover {
+    text-decoration: underline;
+}
+
 @media (hover: hover) {
     .card:hover {
         transform: scale(1.03);

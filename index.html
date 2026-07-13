@@ -4,17 +4,11 @@
 <head>
   <meta charset="UTF-8">
 
-  <meta
-    name="viewport"
-    content="width=device-width, initial-scale=1.0"
-  >
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
 
   <title>Lista de Presentes</title>
 
-  <link
-    href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css"
-    rel="stylesheet"
-  >
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
 
   <link rel="stylesheet" href="css/style.css">
 </head>
@@ -306,12 +300,12 @@
 
       if (presentes.length === 0) {
         container.innerHTML = `
-          <div class="col-12 text-center">
-            <p class="fw-bold">
-              Nenhum presente disponível no momento.
-            </p>
-          </div>
-        `;
+      <div class="col-12 text-center">
+        <p class="fw-bold">
+          Nenhum presente encontrado.
+        </p>
+      </div>
+    `;
 
         return;
       }
@@ -323,128 +317,152 @@
         const valorSeguro =
           escaparHTML(item.valor);
 
-        const statusSeguro =
-          escaparHTML(item.status);
-
         const quantidadeSegura =
           escaparHTML(item.quantidade);
 
         const statusNormalizado =
           normalizarTexto(item.status);
 
-        const presenteIndisponivel = [
-          "ganhado",
-          "reservado",
-          "indisponivel"
-        ].includes(statusNormalizado);
+        /*
+         * Será considerado ganho somente quando
+         * a coluna Status da planilha tiver "Ganhado".
+         */
+        const foiGanhado =
+          statusNormalizado === "ganhado";
 
-        const classeStatus =
-          presenteIndisponivel
-            ? "success"
-            : "secondary";
+        /*
+         * Quando estiver ganho:
+         * - adiciona borda verde;
+         * - remove o botão presencial;
+         * - mantém o Pix.
+         */
+        const classeCard =
+          foiGanhado
+            ? "border border-success border-3"
+            : "";
 
         let identificacaoBrincadeira = "";
 
         if (item.brincadeira) {
           identificacaoBrincadeira = `
-            <span class="badge bg-warning text-dark mb-2">
-              Presente divertido
-            </span>
-          `;
+        <span class="badge bg-warning text-dark mb-2">
+          Presente divertido
+        </span>
+      `;
+        }
+
+        let mensagemGanhado = "";
+
+        if (foiGanhado) {
+          mensagemGanhado = `
+        <div
+          class="alert alert-success py-2 text-center fw-bold"
+          role="alert"
+        >
+          Presente ganho presencialmente
+        </div>
+      `;
         }
 
         let botoes = "";
 
-        if (presenteIndisponivel) {
+        if (foiGanhado) {
+          /*
+           * Se foi ganho presencialmente,
+           * permite somente presentear pelo Pix.
+           */
           botoes = `
-            <button
-              type="button"
-              class="btn btn-secondary w-100"
-              disabled
-            >
-              Presente já escolhido
-            </button>
-          `;
+        <div class="d-grid gap-2">
+
+          <button
+            type="button"
+            class="btn btn-success btn-pix"
+            data-index="${index}"
+          >
+            Disponível via Pix
+          </button>
+
+        </div>
+      `;
         } else {
+          /*
+           * Se ainda não foi marcado como ganho,
+           * apresenta as duas opções.
+           */
           botoes = `
-            <div class="d-grid gap-2">
+        <div class="d-grid gap-2">
 
-              <button
-                type="button"
-                class="btn btn-outline-success btn-presencial"
-                data-index="${index}"
-              >
-                <i class="fab fa-whatsapp"></i>
-                Vou dar presencialmente
-              </button>
+          <button
+            type="button"
+            class="btn btn-outline-success btn-presencial"
+            data-index="${index}"
+          >
+            Vou dar presencialmente
+          </button>
 
-              <button
-                type="button"
-                class="btn btn-primary btn-pix"
-                data-index="${index}"
-              >
-                Presentear via Pix
-              </button>
+          <button
+            type="button"
+            class="btn btn-primary btn-pix"
+            data-index="${index}"
+          >
+            Presentear via Pix
+          </button>
 
-            </div>
-          `;
+        </div>
+      `;
         }
 
         const card = `
-          <div class="col-12 col-md-6 col-lg-4 mb-4">
+      <div class="col-12 col-md-6 col-lg-4 mb-4">
 
-            <div class="card h-100 shadow-sm">
+        <div class="card h-100 shadow-sm ${classeCard}">
 
-              <img
-                src="${item.imagem}"
-                class="card-img-top"
-                alt="${nomeSeguro}"
-                style="height: 250px; object-fit: cover;"
-                onerror="this.onerror=null; this.src='img/sem-imagem.png';"
-              >
+          <img
+            src="${item.imagem}"
+            class="card-img-top"
+            alt="${nomeSeguro}"
+            style="height: 250px; object-fit: cover;"
+            onerror="
+              this.onerror = null;
+              this.src = 'img/sem-imagem.png';
+            "
+          >
 
-              <div class="card-body d-flex flex-column">
+          <div class="card-body d-flex flex-column">
 
-                ${identificacaoBrincadeira}
+            ${identificacaoBrincadeira}
 
-                <h5 class="card-title">
-                  ${nomeSeguro}
-                </h5>
+            <h5 class="card-title">
+              ${nomeSeguro}
+            </h5>
 
-                <p class="card-text">
-                  <strong>Valor:</strong>
-                  ${valorSeguro}
-                </p>
+            <p class="card-text">
+              <strong>Valor:</strong>
+              ${valorSeguro}
+            </p>
 
-                ${
-                  quantidadeSegura !== "1"
-                    ? `
-                      <p class="card-text">
-                        <strong>Quantidade disponível:</strong>
-                        ${quantidadeSegura}
-                      </p>
-                    `
-                    : ""
-                }
+            ${quantidadeSegura !== "1"
+            ? `
+                  <p class="card-text">
+                    <strong>Quantidade:</strong>
+                    ${quantidadeSegura}
+                  </p>
+                `
+            : ""
+          }
 
-                <div class="mt-auto">
-                  ${botoes}
-                </div>
+            ${mensagemGanhado}
 
-              </div>
-
-              <div class="card-footer text-center">
-
-                <span class="badge bg-${classeStatus}">
-                  ${statusSeguro}
-                </span>
-
-              </div>
-
+            <div class="mt-auto">
+              ${botoes}
             </div>
 
           </div>
-        `;
+
+        </div>
+
+      </div>
+    `;
 
         container.insertAdjacentHTML(
           "beforeend",
@@ -732,13 +750,10 @@
     iniciar();
   </script>
 
-  <!-- IMAGEM DO RODAPÉ -->
-  <div class="topo">
-    <img
-      src="img/agradecimento.png"
-      alt="Agradecimento"
-    >
-  </div>
+  <footer>
+    <span>Desenvolvido por <a class="link" href="https://www.instagram.com/joseluiz095?igsh=dXZmcGM2MTQ4ZHh6">José Luiz</a>
+      | Todos os direitos reservados 2026 ©</span> </a>
+  </footer>
 
 </body>
 
