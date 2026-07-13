@@ -1,0 +1,745 @@
+<!DOCTYPE html>
+<html lang="pt-br">
+
+<head>
+  <meta charset="UTF-8">
+
+  <meta
+    name="viewport"
+    content="width=device-width, initial-scale=1.0"
+  >
+
+  <title>Lista de Presentes</title>
+
+  <link
+    href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css"
+    rel="stylesheet"
+  >
+
+  <link rel="stylesheet" href="css/style.css">
+</head>
+
+<body>
+
+  <!-- IMAGEM DO TOPO -->
+  <div class="topo">
+    <img src="img/capa.jpeg" alt="Capa">
+  </div>
+
+  <div class="container py-5">
+
+    <h1 class="text-center mb-5">
+      🎁 Lista de Presentes
+    </h1>
+
+    <div id="lista-presentes" class="row">
+      <div class="col-12 text-center">
+        <div class="spinner-border" role="status">
+          <span class="visually-hidden">Carregando...</span>
+        </div>
+
+        <p class="mt-2">
+          Carregando presentes...
+        </p>
+      </div>
+    </div>
+
+  </div>
+
+  <script>
+    const URL_PLANILHA =
+      "https://docs.google.com/spreadsheets/d/e/2PACX-1vTZp9IA0XHXrJfY-mZj9eoWEFuQs1jYtGYgkmcJ8CwGl6vDv1NwwxRy7FTy858aAP5UbAhYMqZaq5vG/pub?output=csv";
+
+    /*
+     * Número que receberá a mensagem no WhatsApp.
+     *
+     * Formato:
+     * 55 + DDD + número
+     *
+     * Exemplo:
+     * 5527999999999
+     *
+     * Não use espaços, parênteses, traços ou sinal de +.
+     */
+    const numeroWhatsApp = "5527999999999";
+
+    const chavePix = "175.177.817-74";
+
+    /*
+     * Armazena os presentes carregados.
+     * O índice de cada item será usado nos botões dos cards.
+     */
+    let presentesCarregados = [];
+
+    function limparTexto(valor) {
+      return String(valor || "")
+        .replace(/^"|"$/g, "")
+        .replace(/\r/g, "")
+        .trim();
+    }
+
+    function escaparHTML(valor) {
+      return String(valor || "")
+        .replace(/&/g, "&amp;")
+        .replace(/</g, "&lt;")
+        .replace(/>/g, "&gt;")
+        .replace(/"/g, "&quot;")
+        .replace(/'/g, "&#039;");
+    }
+
+    function normalizarCabecalho(valor) {
+      return limparTexto(valor)
+        .normalize("NFD")
+        .replace(/[\u0300-\u036f]/g, "")
+        .toLowerCase()
+        .replace(/\s+/g, " ")
+        .trim();
+    }
+
+    function normalizarTexto(valor) {
+      return limparTexto(valor)
+        .normalize("NFD")
+        .replace(/[\u0300-\u036f]/g, "")
+        .toLowerCase()
+        .trim();
+    }
+
+    function parseCSV(texto) {
+      const linhas = [];
+
+      let linha = [];
+      let campo = "";
+      let dentroAspas = false;
+
+      for (let i = 0; i < texto.length; i++) {
+        const char = texto[i];
+        const proximo = texto[i + 1];
+
+        if (
+          char === '"' &&
+          dentroAspas &&
+          proximo === '"'
+        ) {
+          campo += '"';
+          i++;
+        } else if (char === '"') {
+          dentroAspas = !dentroAspas;
+        } else if (
+          char === "," &&
+          !dentroAspas
+        ) {
+          linha.push(campo);
+          campo = "";
+        } else if (
+          (char === "\n" || char === "\r") &&
+          !dentroAspas
+        ) {
+          if (campo || linha.length) {
+            linha.push(campo);
+            linhas.push(linha);
+
+            linha = [];
+            campo = "";
+          }
+        } else {
+          campo += char;
+        }
+      }
+
+      if (campo || linha.length) {
+        linha.push(campo);
+        linhas.push(linha);
+      }
+
+      return linhas;
+    }
+
+    function montarObjeto(cabecalhos, linha) {
+      const item = {};
+
+      cabecalhos.forEach((cabecalho, index) => {
+        item[cabecalho] = limparTexto(linha[index]);
+      });
+
+      return item;
+    }
+
+    function ehSim(valor) {
+      return [
+        "sim",
+        "s",
+        "true",
+        "1"
+      ].includes(normalizarTexto(valor));
+    }
+
+    function corrigirCaminhoImagem(imagem) {
+      let caminho = limparTexto(imagem);
+
+      if (!caminho || caminho === "—" || caminho === "-") {
+        return "img/sem-imagem.png";
+      }
+
+      if (
+        caminho.startsWith("http://") ||
+        caminho.startsWith("https://")
+      ) {
+        return caminho;
+      }
+
+      caminho = caminho.replace(/^\/+/, "");
+
+      if (!caminho.startsWith("img/")) {
+        caminho = "img/" + caminho;
+      }
+
+      return encodeURI(caminho);
+    }
+
+    function getCampo(item, nomes) {
+      for (const nome of nomes) {
+        const chave = normalizarCabecalho(nome);
+
+        if (item[chave] !== undefined) {
+          return item[chave];
+        }
+      }
+
+      return "";
+    }
+
+    async function carregarPresentes() {
+      const separador =
+        URL_PLANILHA.includes("?")
+          ? "&"
+          : "?";
+
+      const urlSemCache =
+        URL_PLANILHA +
+        separador +
+        "t=" +
+        Date.now();
+
+      const resposta = await fetch(urlSemCache, {
+        cache: "no-store"
+      });
+
+      if (!resposta.ok) {
+        throw new Error(
+          `Erro ao carregar planilha. HTTP ${resposta.status}`
+        );
+      }
+
+      const texto = await resposta.text();
+
+      const linhas = parseCSV(texto).filter(linha =>
+        linha.some(campo => limparTexto(campo) !== "")
+      );
+
+      if (linhas.length === 0) {
+        return [];
+      }
+
+      const cabecalhos =
+        linhas[0].map(normalizarCabecalho);
+
+      console.log(
+        "Cabeçalhos encontrados:",
+        cabecalhos
+      );
+
+      return linhas
+        .slice(1)
+        .map(linha =>
+          montarObjeto(cabecalhos, linha)
+        )
+        .map(item => {
+          const nome =
+            getCampo(item, ["Item", "Nome"]);
+
+          const imagem =
+            getCampo(item, ["Imagem"]);
+
+          const valor =
+            getCampo(item, [
+              "Valor Unidade",
+              "Valor"
+            ]);
+
+          const quantidade =
+            getCampo(item, ["Quantidade"]) || "1";
+
+          const status =
+            getCampo(item, ["Status"]) || "Disponível";
+
+          const ativo =
+            getCampo(item, ["Ativo"]) || "Sim";
+
+          const brincadeira =
+            getCampo(item, ["Brincadeira"]) || "Não";
+
+          /*
+           * A coluna Link foi removida.
+           * Ela não é mais lida nem retornada.
+           */
+          return {
+            nome,
+            imagem: corrigirCaminhoImagem(imagem),
+            valor,
+            quantidade,
+            status,
+            ativo,
+            brincadeira: ehSim(brincadeira)
+          };
+        })
+        .filter(item => item.nome)
+        .filter(item => ehSim(item.ativo));
+    }
+
+    function gerarCards(presentes) {
+      const container =
+        document.getElementById("lista-presentes");
+
+      container.innerHTML = "";
+
+      presentesCarregados = presentes;
+
+      if (presentes.length === 0) {
+        container.innerHTML = `
+          <div class="col-12 text-center">
+            <p class="fw-bold">
+              Nenhum presente disponível no momento.
+            </p>
+          </div>
+        `;
+
+        return;
+      }
+
+      presentes.forEach((item, index) => {
+        const nomeSeguro =
+          escaparHTML(item.nome);
+
+        const valorSeguro =
+          escaparHTML(item.valor);
+
+        const statusSeguro =
+          escaparHTML(item.status);
+
+        const quantidadeSegura =
+          escaparHTML(item.quantidade);
+
+        const statusNormalizado =
+          normalizarTexto(item.status);
+
+        const presenteIndisponivel = [
+          "ganhado",
+          "reservado",
+          "indisponivel"
+        ].includes(statusNormalizado);
+
+        const classeStatus =
+          presenteIndisponivel
+            ? "success"
+            : "secondary";
+
+        let identificacaoBrincadeira = "";
+
+        if (item.brincadeira) {
+          identificacaoBrincadeira = `
+            <span class="badge bg-warning text-dark mb-2">
+              Presente divertido
+            </span>
+          `;
+        }
+
+        let botoes = "";
+
+        if (presenteIndisponivel) {
+          botoes = `
+            <button
+              type="button"
+              class="btn btn-secondary w-100"
+              disabled
+            >
+              Presente já escolhido
+            </button>
+          `;
+        } else {
+          botoes = `
+            <div class="d-grid gap-2">
+
+              <button
+                type="button"
+                class="btn btn-outline-success btn-presencial"
+                data-index="${index}"
+              >
+                <i class="fab fa-whatsapp"></i>
+                Vou dar presencialmente
+              </button>
+
+              <button
+                type="button"
+                class="btn btn-primary btn-pix"
+                data-index="${index}"
+              >
+                Presentear via Pix
+              </button>
+
+            </div>
+          `;
+        }
+
+        const card = `
+          <div class="col-12 col-md-6 col-lg-4 mb-4">
+
+            <div class="card h-100 shadow-sm">
+
+              <img
+                src="${item.imagem}"
+                class="card-img-top"
+                alt="${nomeSeguro}"
+                style="height: 250px; object-fit: cover;"
+                onerror="this.onerror=null; this.src='img/sem-imagem.png';"
+              >
+
+              <div class="card-body d-flex flex-column">
+
+                ${identificacaoBrincadeira}
+
+                <h5 class="card-title">
+                  ${nomeSeguro}
+                </h5>
+
+                <p class="card-text">
+                  <strong>Valor:</strong>
+                  ${valorSeguro}
+                </p>
+
+                ${
+                  quantidadeSegura !== "1"
+                    ? `
+                      <p class="card-text">
+                        <strong>Quantidade disponível:</strong>
+                        ${quantidadeSegura}
+                      </p>
+                    `
+                    : ""
+                }
+
+                <div class="mt-auto">
+                  ${botoes}
+                </div>
+
+              </div>
+
+              <div class="card-footer text-center">
+
+                <span class="badge bg-${classeStatus}">
+                  ${statusSeguro}
+                </span>
+
+              </div>
+
+            </div>
+
+          </div>
+        `;
+
+        container.insertAdjacentHTML(
+          "beforeend",
+          card
+        );
+      });
+    }
+
+    function abrirWhatsAppPresente(item) {
+      const numero =
+        String(numeroWhatsApp || "")
+          .replace(/\D/g, "");
+
+      if (numero.length < 12) {
+        alert(
+          "O número do WhatsApp ainda não foi configurado corretamente."
+        );
+
+        return;
+      }
+
+      const mensagem = [
+        "Olá!",
+        "",
+        "Escolhi um presente da lista e vou entregá-lo presencialmente.",
+        "",
+        `Presente: ${item.nome}`,
+        `Valor de referência: ${item.valor}`,
+        "",
+        "Por favor, podem reservar esse item para mim?"
+      ].join("\n");
+
+      const url =
+        "https://wa.me/" +
+        numero +
+        "?text=" +
+        encodeURIComponent(mensagem);
+
+      window.open(
+        url,
+        "_blank",
+        "noopener,noreferrer"
+      );
+    }
+
+    function valorParaPix(valorTexto) {
+      let valor = String(valorTexto || "")
+        .replace(/\s/g, "")
+        .replace("R$", "")
+        .replace(/\./g, "")
+        .replace(",", ".")
+        .trim();
+
+      const numero = Number(valor);
+
+      if (
+        !Number.isFinite(numero) ||
+        numero <= 0
+      ) {
+        throw new Error(
+          "O valor do presente é inválido para gerar o Pix."
+        );
+      }
+
+      return numero.toFixed(2);
+    }
+
+    function crc16(payload) {
+      let crc = 0xffff;
+
+      for (let i = 0; i < payload.length; i++) {
+        crc ^= payload.charCodeAt(i) << 8;
+
+        for (let j = 0; j < 8; j++) {
+          crc =
+            crc & 0x8000
+              ? (crc << 1) ^ 0x1021
+              : crc << 1;
+
+          crc &= 0xffff;
+        }
+      }
+
+      return crc
+        .toString(16)
+        .toUpperCase()
+        .padStart(4, "0");
+    }
+
+    /*
+     * Payload Pix original sem valor dinâmico.
+     *
+     * O código remove o CRC existente,
+     * adiciona o campo do valor e gera um novo CRC.
+     */
+    const pixBaseSemValor =
+      "00020126420014BR.GOV.BCB.PIX0120ruan11dias@gmail.com5204000053039865802BR5924Ruan Ribeiro Dias Campos6009Sao Paulo62290525REC6A54F339EF1B238701561563047657";
+
+    function gerarPixComValor(valorTexto) {
+      const valor =
+        valorParaPix(valorTexto);
+
+      /*
+       * Remove:
+       * 6304 + CRC anterior
+       */
+      const pixSemCRC =
+        pixBaseSemValor.substring(
+          0,
+          pixBaseSemValor.length - 8
+        );
+
+      const campoValor =
+        "54" +
+        valor.length
+          .toString()
+          .padStart(2, "0") +
+        valor;
+
+      const identificadorMoeda = "5303986";
+
+      const posMoeda =
+        pixSemCRC.indexOf(identificadorMoeda) +
+        identificadorMoeda.length;
+
+      if (
+        posMoeda <
+        identificadorMoeda.length
+      ) {
+        throw new Error(
+          "Não foi possível localizar o campo de moeda no Pix."
+        );
+      }
+
+      const payloadSemCRC =
+        pixSemCRC.substring(0, posMoeda) +
+        campoValor +
+        pixSemCRC.substring(posMoeda) +
+        "6304";
+
+      return (
+        payloadSemCRC +
+        crc16(payloadSemCRC)
+      );
+    }
+
+    async function copiarTexto(texto) {
+      if (
+        navigator.clipboard &&
+        window.isSecureContext
+      ) {
+        await navigator.clipboard.writeText(texto);
+        return;
+      }
+
+      /*
+       * Alternativa para páginas sem HTTPS
+       * ou navegadores antigos.
+       */
+      const textarea =
+        document.createElement("textarea");
+
+      textarea.value = texto;
+      textarea.style.position = "fixed";
+      textarea.style.opacity = "0";
+      textarea.style.pointerEvents = "none";
+
+      document.body.appendChild(textarea);
+
+      textarea.focus();
+      textarea.select();
+
+      const copiado =
+        document.execCommand("copy");
+
+      textarea.remove();
+
+      if (!copiado) {
+        throw new Error(
+          "O navegador não permitiu copiar o código Pix."
+        );
+      }
+    }
+
+    async function copiarPixCopiaCola(item) {
+      try {
+        const pix =
+          gerarPixComValor(item.valor);
+
+        await copiarTexto(pix);
+
+        alert(
+          [
+            `Pix copia e cola de ${item.valor} copiado!`,
+            "",
+            `Presente: ${item.nome}`,
+            "",
+            "Abra o aplicativo do seu banco,",
+            "escolha Pix copia e cola",
+            "e cole o código."
+          ].join("\n")
+        );
+      } catch (erro) {
+        console.error(erro);
+
+        alert(
+          erro.message ||
+          "Não foi possível gerar o Pix."
+        );
+      }
+    }
+
+    /*
+     * Controla os cliques nos botões dos cards.
+     */
+    document
+      .getElementById("lista-presentes")
+      .addEventListener("click", event => {
+        const botaoPresencial =
+          event.target.closest(".btn-presencial");
+
+        const botaoPix =
+          event.target.closest(".btn-pix");
+
+        if (
+          !botaoPresencial &&
+          !botaoPix
+        ) {
+          return;
+        }
+
+        const botao =
+          botaoPresencial || botaoPix;
+
+        const index =
+          Number(botao.dataset.index);
+
+        const item =
+          presentesCarregados[index];
+
+        if (!item) {
+          alert(
+            "Não foi possível localizar o presente selecionado."
+          );
+
+          return;
+        }
+
+        if (botaoPresencial) {
+          abrirWhatsAppPresente(item);
+          return;
+        }
+
+        copiarPixCopiaCola(item);
+      });
+
+    async function iniciar() {
+      try {
+        const presentes =
+          await carregarPresentes();
+
+        gerarCards(presentes);
+      } catch (erro) {
+        console.error(erro);
+
+        document
+          .getElementById("lista-presentes")
+          .innerHTML = `
+            <div class="col-12 text-center">
+
+              <p class="text-danger fw-bold">
+                Erro ao carregar a lista de presentes.
+              </p>
+
+              <p class="text-muted">
+                Verifique se a planilha está publicada
+                e se os cabeçalhos estão corretos.
+              </p>
+
+            </div>
+          `;
+      }
+    }
+
+    iniciar();
+  </script>
+
+  <!-- IMAGEM DO RODAPÉ -->
+  <div class="topo">
+    <img
+      src="img/agradecimento.png"
+      alt="Agradecimento"
+    >
+  </div>
+
+</body>
+
+</html>
